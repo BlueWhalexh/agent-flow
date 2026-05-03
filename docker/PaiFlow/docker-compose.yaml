@@ -18,7 +18,7 @@ services:
       # Mount MySQL configuration
       - ./mysql/my.cnf:/etc/mysql/conf.d/charset.cnf:ro
       # Mount initialization scripts
-      - ./mysql:/docker-entrypoint-initdb.d
+      - ./mysql/initdb:/docker-entrypoint-initdb.d
     networks:
       - paiflow-network
     restart: always
@@ -32,6 +32,8 @@ services:
   redis:
     image: docker.m.daocloud.io/library/redis:7
     container_name: paiflow-redis
+    ports:
+      - "6379:6379"
     volumes:
       - redis_data:/data
     networks:
@@ -124,6 +126,8 @@ services:
       SERVER_PORT: 8080
     ports:
       - "8081:8080"
+    expose:
+      - "8080"
     depends_on:
       mysql:
         condition: service_healthy
@@ -139,7 +143,7 @@ services:
   core-workflow-java:
     build:
       context: ../../
-      dockerfile: docker/PaiFlow/Dockerfile.workflow
+      dockerfile: docker/PaiFlow/Dockerfile.workflow.mirror
     container_name: paiflow-core-workflow-java
     environment:
       # Database
@@ -155,6 +159,23 @@ services:
       
       # Integration with Console
       MODEL_SERVICE_URL: http://console-hub:8080
+      TTS_SOURCE: ${TTS_SOURCE:-spark}
+      SPARK_APP_ID: ${SPARK_APP_ID:-}
+      SPARK_API_KEY: ${SPARK_API_KEY:-}
+      SPARK_API_SECRET: ${SPARK_API_SECRET:-}
+      SPARK_TTS_URL: ${SPARK_TTS_URL:-}
+      QWEN_API_KEY: ${QWEN_API_KEY:-}
+      QWEN_MODEL: ${QWEN_MODEL:-qwen3-tts-flash}
+      QWEN_TTS_URL: ${QWEN_TTS_URL:-https://dashscope.aliyuncs.com/api/v1}
+      XIAOMI_API_KEY: ${XIAOMI_API_KEY:-}
+      XIAOMI_TTS_MODEL: ${XIAOMI_TTS_MODEL:-mimo-v2-tts}
+      XIAOMI_TTS_URL: ${XIAOMI_TTS_URL:-https://api.xiaomimimo.com/v1}
+      XIAOMI_TTS_VOICE: ${XIAOMI_TTS_VOICE:-mimo_default}
+      XIAOMI_TTS_RESPONSE_FORMAT: ${XIAOMI_TTS_RESPONSE_FORMAT:-mp3}
+      XIAOMI_MULTIMODAL_MODEL: ${XIAOMI_MULTIMODAL_MODEL:-mimo-v2.5}
+      XIAOMI_WEB_SEARCH_MODEL: ${XIAOMI_WEB_SEARCH_MODEL:-mimo-v2.5-pro}
+      XIAOMI_MULTIMODAL_URL: ${XIAOMI_MULTIMODAL_URL:-https://api.xiaomimimo.com/v1}
+      XIAOMI_MULTIMODAL_MAX_TOKENS: ${XIAOMI_MULTIMODAL_MAX_TOKENS:-1024}
       
       # MinIO
       OSS_ENDPOINT: http://minio:9000
@@ -163,13 +184,52 @@ services:
       OSS_REMOTE_ENDPOINT: http://localhost:9000
       
       SERVER_PORT: 7880
-    ports:
-      - "7880:7880"
+    expose:
+      - "7880"
     depends_on:
       mysql:
         condition: service_healthy
       redis:
         condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - paiflow-network
+    restart: always
+
+  # Core AI Tools
+  core-aitools:
+    build:
+      context: ../../
+      dockerfile: core/plugin/aitools/Dockerfile
+    container_name: paiflow-core-aitools
+    environment:
+      SERVICE_PORT: 18668
+      SERVICE_APP: plugin.aitools.app.start_server:aitools_app
+
+      OSS_TYPE: s3
+      OSS_ENDPOINT: http://minio:9000
+      OSS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+      OSS_ACCESS_KEY_SECRET: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      OSS_BUCKET_NAME: aitools
+      OSS_DOWNLOAD_HOST: http://localhost:9000
+      OSS_TTL: 157788000
+
+      AI_APP_ID: ${SPARK_APP_ID:-}
+      AI_API_KEY: ${SPARK_API_KEY:-}
+      AI_API_SECRET: ${SPARK_API_SECRET:-}
+      AI_API_PASSWORD: ${SPARK_API_PASSWORD:-}
+      TTS_URL: ${SPARK_TTS_URL:-}
+
+      IMAGE_GENERATE_URL: ${IMAGE_GENERATE_URL:-}
+      IMAGE_UNDERSTANDING_URL: ${IMAGE_UNDERSTANDING_URL:-}
+      OCR_LLM_WS_URL: ${OCR_LLM_WS_URL:-}
+
+      KAFKA_ENABLE: 0
+      KAFKA_SERVERS: localhost:9092
+    ports:
+      - "18668:18668"
+    depends_on:
       minio:
         condition: service_healthy
     networks:

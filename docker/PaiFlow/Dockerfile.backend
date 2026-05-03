@@ -1,4 +1,4 @@
-FROM docker.m.daocloud.io/library/maven:3.9.9-eclipse-temurin-21-noble AS build
+FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/maven:3.9.9-eclipse-temurin-21-noble AS build
 WORKDIR /app
 
 # Copy the entire backend directory
@@ -9,7 +9,7 @@ WORKDIR /app/console/backend
 RUN mvn clean package -DskipTests
 
 # Runtime stage
-FROM docker.m.daocloud.io/library/eclipse-temurin:21-jre-noble
+FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/eclipse-temurin:21-jre
 WORKDIR /app
 
 # Set timezone

@@ -1,0 +1,67 @@
+name: Deploy Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "镜像标签，例如 latest 或 sha-xxxx"
+        required: true
+        default: "latest"
+        type: string
+      services:
+        description: "要部署的服务，all 或用逗号分隔"
+        required: true
+        default: "core-workflow-java"
+        type: string
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy To Production
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compute image prefix
+        id: meta
+        shell: bash
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          echo "image_prefix=ghcr.io/${owner}/paiflow" >> "$GITHUB_OUTPUT"
+
+      - name: Setup SSH key
+        shell: bash
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.DO_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "${{ secrets.DO_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Upload production files
+        shell: bash
+        run: |
+          scp -i ~/.ssh/id_ed25519 docker/PaiFlow/docker-compose.prod.yaml "${{ secrets.DO_USER }}@${{ secrets.DO_HOST }}:/opt/PaiFlow/docker/PaiFlow/docker-compose.prod.yaml"
+          ssh -i ~/.ssh/id_ed25519 "${{ secrets.DO_USER }}@${{ secrets.DO_HOST }}" "mkdir -p /opt/PaiFlow/scripts/server"
+          scp -i ~/.ssh/id_ed25519 scripts/server/deploy-ghcr.sh "${{ secrets.DO_USER }}@${{ secrets.DO_HOST }}:/opt/PaiFlow/scripts/server/deploy-ghcr.sh"
+
+      - name: Run deployment
+        shell: bash
+        env:
+          SERVICES_INPUT: ${{ github.event.inputs.services }}
+        run: |
+          services="$(echo "${SERVICES_INPUT}" | tr ',' ' ')"
+          ssh -i ~/.ssh/id_ed25519 "${{ secrets.DO_USER }}@${{ secrets.DO_HOST }}" "\
+            chmod +x /opt/PaiFlow/scripts/server/deploy-ghcr.sh && \
+            export IMAGE_PREFIX='${{ steps.meta.outputs.image_prefix }}' && \
+            export IMAGE_TAG='${{ github.event.inputs.image_tag }}' && \
+            export GHCR_USERNAME='${{ secrets.GHCR_USERNAME }}' && \
+            export GHCR_TOKEN='${{ secrets.GHCR_TOKEN }}' && \
+            /opt/PaiFlow/scripts/server/deploy-ghcr.sh ${services}"

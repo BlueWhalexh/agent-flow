@@ -423,6 +423,9 @@ const handleNodeStatusChange = ({
     }
   }
 };
+// [DEBUG] 追踪节点上次状态，仅状态变化时输出
+const nodeStatusTrack: Record<string, string> = {};
+
 const handleMessage = (
   nodes: ReactFlowNode[],
   edges: ReactFlowEdge[],
@@ -435,21 +438,24 @@ const handleMessage = (
   const { flowResult, nodeId, nodeStatus, responseResult } =
     extractNodeInfo(data);
 
-  // [DEBUG] 工作流调试日志
-  const nodeName = nodes.find(n => n.id === nodeId)?.data?.name || nodeId;
-  console.group(`[WorkflowDebug] 节点: ${nodeName} (${nodeId})`);
-  console.log('节点状态:', nodeStatus || 'running');
-  console.log('流程结果:', flowResult || '节点执行中');
-  console.log('输入 (inputs):', responseResult?.inputs);
-  console.log('输出 (outputs):', responseResult?.outputs);
-  console.log('原始输出 (rawOutput):', responseResult?.rawOutput);
-  console.log('错误输出 (errorOutputs):', responseResult?.errorOutputs);
-  console.log('推理内容 (reasoningContent):', responseResult?.reasoningContent);
-  console.log('耗时:', responseResult?.timeCost, 's');
-  console.log('Token:', responseResult?.tokenCost);
-  console.log('失败原因:', responseResult?.failedReason);
-  console.log('原始SSE数据:', data);
-  console.groupEnd();
+  // [DEBUG] 仅节点状态变化时输出日志
+  const newStatus = nodeStatus || 'running';
+  const prevStatus = nodeStatusTrack[nodeId];
+  if (newStatus !== prevStatus) {
+    nodeStatusTrack[nodeId] = newStatus;
+    const nodeName = nodes.find(n => n.id === nodeId)?.data?.name || nodeId;
+    console.groupCollapsed(`[WorkflowDebug] ${nodeName} → ${newStatus}`);
+    console.log('节点ID:', nodeId);
+    console.log('输入:', responseResult?.inputs);
+    console.log('输出:', responseResult?.outputs);
+    if (responseResult?.rawOutput) console.log('原始输出:', responseResult.rawOutput);
+    if (responseResult?.errorOutputs) console.warn('错误输出:', responseResult.errorOutputs);
+    if (responseResult?.reasoningContent) console.log('推理:', responseResult.reasoningContent);
+    if (responseResult?.timeCost != null) console.log('耗时:', responseResult.timeCost, 's');
+    if (responseResult?.tokenCost != null) console.log('Token:', responseResult.tokenCost);
+    if (responseResult?.failedReason) console.error('失败原因:', responseResult.failedReason);
+    console.groupEnd();
+  }
 
   get().chatInfoRef.sid = data?.id;
   if (data?.code === 21103) {
@@ -595,6 +601,9 @@ const runDebugger = (obj: unknown): void => {
   const currentFlow = useFlowsManager.getState().currentFlow;
   const historyVersion = useFlowsManager.getState().historyVersion;
   const url = getFixedUrl('/workflow/chat');
+
+  // [DEBUG] 重置状态追踪
+  Object.keys(nodeStatusTrack).forEach(k => delete nodeStatusTrack[k]);
 
   // [DEBUG] 工作流调试请求日志
   console.group('[WorkflowDebug] 发起调试请求');

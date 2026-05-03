@@ -52,7 +52,7 @@ jobs:
           - name: console-hub
             dockerfile: docker/PaiFlow/Dockerfile.backend
           - name: core-workflow-java
-            dockerfile: docker/PaiFlow/Dockerfile.workflow.mirror
+            dockerfile: docker/PaiFlow/Dockerfile.workflow
           - name: core-aitools
             dockerfile: core/plugin/aitools/Dockerfile
     steps:
@@ -94,4 +94,3 @@ jobs:
           labels: ${{ steps.metadata.outputs.labels }}
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,scope=${{ matrix.name }},mode=max
-

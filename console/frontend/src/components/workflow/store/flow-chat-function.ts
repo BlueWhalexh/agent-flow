@@ -434,16 +434,34 @@ const handleMessage = (
   const data: WebSocketMessageData = JSON.parse(e.data);
   const { flowResult, nodeId, nodeStatus, responseResult } =
     extractNodeInfo(data);
+
+  // [DEBUG] 工作流调试日志
+  const nodeName = nodes.find(n => n.id === nodeId)?.data?.name || nodeId;
+  console.group(`[WorkflowDebug] 节点: ${nodeName} (${nodeId})`);
+  console.log('节点状态:', nodeStatus || 'running');
+  console.log('流程结果:', flowResult || '节点执行中');
+  console.log('输入 (inputs):', responseResult?.inputs);
+  console.log('输出 (outputs):', responseResult?.outputs);
+  console.log('原始输出 (rawOutput):', responseResult?.rawOutput);
+  console.log('错误输出 (errorOutputs):', responseResult?.errorOutputs);
+  console.log('推理内容 (reasoningContent):', responseResult?.reasoningContent);
+  console.log('耗时:', responseResult?.timeCost, 's');
+  console.log('Token:', responseResult?.tokenCost);
+  console.log('失败原因:', responseResult?.failedReason);
+  console.log('原始SSE数据:', data);
+  console.groupEnd();
+
   get().chatInfoRef.sid = data?.id;
   if (data?.code === 21103) {
+    console.warn('[WorkflowDebug] 审核失败:', data);
     handleAuditFailed(data, get);
     return;
-  } else if (flowResult === null && nodeId !== 'flow_obj') {
+  } else if (flowResult == null && nodeId !== 'flow_obj') {
     handleNodeStatusChange({
       nodes,
       edges,
       nodeId,
-      nodeStatus: nodeStatus === null ? 'ing' : nodeStatus,
+      nodeStatus: nodeStatus == null ? 'ing' : nodeStatus,
       responseResult,
       get,
     });
@@ -458,6 +476,7 @@ const handleMessage = (
       get,
     });
   } else if (flowResult === 'stop') {
+    console.log('[WorkflowDebug] 流程结束:', data);
     handleFlowStop(data, get);
   }
 };
@@ -576,6 +595,17 @@ const runDebugger = (obj: unknown): void => {
   const currentFlow = useFlowsManager.getState().currentFlow;
   const historyVersion = useFlowsManager.getState().historyVersion;
   const url = getFixedUrl('/workflow/chat');
+
+  // [DEBUG] 工作流调试请求日志
+  console.group('[WorkflowDebug] 发起调试请求');
+  console.log('Flow ID:', currentFlow?.flowId);
+  console.log('Flow 名称:', currentFlow?.name);
+  console.log('节点数量:', nodes?.length);
+  console.log('节点列表:', nodes?.map(n => ({ id: n.id, name: n.data?.name, type: n.data?.type })));
+  console.log('入口参数:', enters);
+  console.log('请求 URL:', url);
+  console.groupEnd();
+
   set({
     controllerRef: new AbortController(),
   });
@@ -607,6 +637,8 @@ const runDebugger = (obj: unknown): void => {
     params.version = get().versionId;
     params.promptDebugger = true;
   }
+  console.log('[WorkflowDebug] SSE请求参数:', params);
+
   fetchEventSource(url, {
     method: 'POST',
     headers: {
@@ -616,7 +648,8 @@ const runDebugger = (obj: unknown): void => {
     body: JSON.stringify(params),
     signal: get().controllerRef?.signal,
     openWhenHidden: true,
-    onerror() {
+    onerror(err) {
+      console.error('[WorkflowDebug] SSE连接错误:', err);
       get().controllerRef?.abort();
     },
     onmessage(e) {

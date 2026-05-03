@@ -1,0 +1,209 @@
+services:
+  mysql:
+    image: docker.m.daocloud.io/library/mysql:8.4
+    container_name: paiflow-mysql
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-123456}
+      MYSQL_DATABASE: paiflow-console
+    expose:
+      - "3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql/my.cnf:/etc/mysql/conf.d/charset.cnf:ro
+      - ./mysql/initdb:/docker-entrypoint-initdb.d
+    networks:
+      - paiflow-network
+    restart: always
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  redis:
+    image: docker.m.daocloud.io/library/redis:7
+    container_name: paiflow-redis
+    expose:
+      - "6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - paiflow-network
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  minio:
+    image: docker.m.daocloud.io/minio/minio:RELEASE.2025-07-23T15-54-02Z
+    container_name: paiflow-minio
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - paiflow-network
+    restart: always
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  console-frontend:
+    build:
+      context: ../../
+      dockerfile: docker/PaiFlow/Dockerfile.frontend
+    container_name: paiflow-console-frontend
+    environment:
+      NGINX_PORT: 1881
+      CONSOLE_API_URL: /console-api
+      CONSOLE_CASDOOR_URL: ""
+      CONSOLE_CASDOOR_ID: ""
+    ports:
+      - "${FRONTEND_PORT:-3000}:1881"
+    depends_on:
+      console-hub:
+        condition: service_healthy
+    networks:
+      - paiflow-network
+    restart: always
+
+  console-hub:
+    build:
+      context: ../../
+      dockerfile: docker/PaiFlow/Dockerfile.backend
+    container_name: paiflow-console-hub
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DB: paiflow-console
+      MYSQL_USER: root
+      MYSQL_PASSWORD: ${MYSQL_ROOT_PASSWORD:-123456}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      OSS_ENDPOINT: http://minio:9000
+      OSS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+      OSS_ACCESS_KEY_SECRET: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      OSS_REMOTE_ENDPOINT: http://${PUBLIC_HOST:-localhost}:${MINIO_API_PORT:-9000}
+      OSS_BUCKET_CONSOLE: console
+      WORKFLOW_CHAT_URL: http://core-workflow-java:7880/api/v1/workflow/chat/stream
+      WORKFLOW_URL: http://core-workflow-java:7880
+      SERVER_PORT: 8080
+    expose:
+      - "8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - paiflow-network
+    restart: always
+
+  core-workflow-java:
+    build:
+      context: ../../
+      dockerfile: docker/PaiFlow/Dockerfile.workflow.mirror
+    container_name: paiflow-core-workflow-java
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DB: paiflow-workflow
+      MYSQL_USER: root
+      MYSQL_PASSWORD: ${MYSQL_ROOT_PASSWORD:-123456}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      MODEL_SERVICE_URL: http://console-hub:8080
+      TTS_SOURCE: ${TTS_SOURCE:-spark}
+      SPARK_APP_ID: ${SPARK_APP_ID:-}
+      SPARK_API_KEY: ${SPARK_API_KEY:-}
+      SPARK_API_SECRET: ${SPARK_API_SECRET:-}
+      SPARK_API_PASSWORD: ${SPARK_API_PASSWORD:-}
+      SPARK_TTS_URL: ${SPARK_TTS_URL:-}
+      SPARK_STANDARD_TTS_URL: ${SPARK_STANDARD_TTS_URL:-wss://tts-api.xfyun.cn/v2/tts}
+      SPARK_STANDARD_TTS_HOST: ${SPARK_STANDARD_TTS_HOST:-ws-api.xfyun.cn}
+      SPARK_ENABLE_STANDARD_FALLBACK: ${SPARK_ENABLE_STANDARD_FALLBACK:-true}
+      SPARK_STANDARD_FALLBACK_VCN: ${SPARK_STANDARD_FALLBACK_VCN:-xiaoyan}
+      QWEN_API_KEY: ${QWEN_API_KEY:-}
+      QWEN_MODEL: ${QWEN_MODEL:-qwen3-tts-flash}
+      QWEN_TTS_URL: ${QWEN_TTS_URL:-https://dashscope.aliyuncs.com/api/v1}
+      XIAOMI_API_KEY: ${XIAOMI_API_KEY:-}
+      XIAOMI_TTS_MODEL: ${XIAOMI_TTS_MODEL:-mimo-v2-tts}
+      XIAOMI_TTS_URL: ${XIAOMI_TTS_URL:-https://api.xiaomimimo.com/v1}
+      XIAOMI_TTS_VOICE: ${XIAOMI_TTS_VOICE:-mimo_default}
+      XIAOMI_TTS_RESPONSE_FORMAT: ${XIAOMI_TTS_RESPONSE_FORMAT:-mp3}
+      XIAOMI_MULTIMODAL_MODEL: ${XIAOMI_MULTIMODAL_MODEL:-mimo-v2.5}
+      XIAOMI_WEB_SEARCH_MODEL: ${XIAOMI_WEB_SEARCH_MODEL:-mimo-v2.5-pro}
+      XIAOMI_MULTIMODAL_URL: ${XIAOMI_MULTIMODAL_URL:-https://api.xiaomimimo.com/v1}
+      XIAOMI_MULTIMODAL_MAX_TOKENS: ${XIAOMI_MULTIMODAL_MAX_TOKENS:-1024}
+      OSS_ENDPOINT: http://minio:9000
+      OSS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+      OSS_ACCESS_KEY_SECRET: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      OSS_REMOTE_ENDPOINT: http://${PUBLIC_HOST:-localhost}:${MINIO_API_PORT:-9000}
+      SERVER_PORT: 7880
+    expose:
+      - "7880"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - paiflow-network
+    restart: always
+
+  core-aitools:
+    build:
+      context: ../../
+      dockerfile: core/plugin/aitools/Dockerfile
+    container_name: paiflow-core-aitools
+    environment:
+      SERVICE_PORT: 18668
+      SERVICE_APP: plugin.aitools.app.start_server:aitools_app
+      OSS_TYPE: s3
+      OSS_ENDPOINT: http://minio:9000
+      OSS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+      OSS_ACCESS_KEY_SECRET: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      OSS_BUCKET_NAME: aitools
+      OSS_DOWNLOAD_HOST: http://${PUBLIC_HOST:-localhost}:${MINIO_API_PORT:-9000}
+      OSS_TTL: 157788000
+      AI_APP_ID: ${SPARK_APP_ID:-}
+      AI_API_KEY: ${SPARK_API_KEY:-}
+      AI_API_SECRET: ${SPARK_API_SECRET:-}
+      AI_API_PASSWORD: ${SPARK_API_PASSWORD:-}
+      TTS_URL: ${SPARK_TTS_URL:-}
+      IMAGE_GENERATE_URL: ${IMAGE_GENERATE_URL:-}
+      IMAGE_UNDERSTANDING_URL: ${IMAGE_UNDERSTANDING_URL:-}
+      OCR_LLM_WS_URL: ${OCR_LLM_WS_URL:-}
+      KAFKA_ENABLE: 0
+      KAFKA_SERVERS: localhost:9092
+    expose:
+      - "18668"
+    depends_on:
+      minio:
+        condition: service_healthy
+    networks:
+      - paiflow-network
+    restart: always
+
+networks:
+  paiflow-network:
+    driver: bridge
+
+volumes:
+  mysql_data:
+  redis_data:
+  minio_data:

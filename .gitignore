@@ -242,3 +242,34 @@ docker-compose.override.yml
 .dockerignore.local
 *.dockerignore.local
 /.qoder/repowiki
+
+# =============================================================================
+# Local Investigation Artifacts
+# =============================================================================
+.playwright-cli/
+analyze_api.py
+api_bytes.txt
+api_response.json
+byte_check.py
+byte_check.txt
+check_all_chinese.py
+chinese_check.txt
+decode_analysis.py
+decode_analysis.txt
+decode_analysis_result.txt
+decode_api.py
+decode_api.txt
+decode_api_result.txt
+decode_test.txt
+fix_debug.txt
+fix_mojibake.py
+fix_mojibake_debug.py
+fix_test.txt
+garbled_search.txt
+node_template_search.txt
+nul
+search_garbled.py
+search_node_template.py
+search_template.py
+template_search.txt
+template_search2.txt

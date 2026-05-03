@@ -6,11 +6,6 @@ on:
       - main
       - master
       - feature/**
-  pull_request:
-    branches:
-      - main
-      - master
-      - feature/**
   workflow_dispatch:
     inputs:
       push_images:

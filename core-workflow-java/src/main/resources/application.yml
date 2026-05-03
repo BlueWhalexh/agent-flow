@@ -1,5 +1,5 @@
 server:
-  port: 7880
+  port: 7882
   servlet:
     context-path: /
 
@@ -10,7 +10,7 @@ spring:
   # 数据库配置
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DB:paiflow-workflow}?useUnicode=true&characterEncoding=UTF-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DB:paiflow-workflow}?useUnicode=true&characterEncoding=UTF-8&connectionCollation=utf8mb4_unicode_ci&sessionVariables=character_set_client=utf8mb4,character_set_connection=utf8mb4,character_set_results=utf8mb4&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
     username: ${MYSQL_USER:root}
     password: ${MYSQL_PASSWORD:123456}
     hikari:
@@ -25,7 +25,7 @@ spring:
   # Link数据库配置
   link-datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_LINK_DB:paiflow-link}?useUnicode=true&characterEncoding=UTF-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_LINK_DB:paiflow-link}?useUnicode=true&characterEncoding=UTF-8&connectionCollation=utf8mb4_unicode_ci&sessionVariables=character_set_client=utf8mb4,character_set_connection=utf8mb4,character_set_results=utf8mb4&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
     username: ${MYSQL_USER:root}
     password: ${MYSQL_PASSWORD:123456}
     hikari:
@@ -145,7 +145,7 @@ s3:
 
 # Spark LLM configuration
 tts:
-  source: qwen
+  source: spark
 
 spark:
   source: spark
@@ -153,9 +153,25 @@ spark:
   api-key: ${SPARK_API_KEY:ebaf9d(useyouapi)47a87934}
   api-secret: ${SPARK_API_SECRET:ZGE0YjQ(useyouapi)I0M2Q1}
   tts-url: ${SPARK_TTS_URL:wss://cbm01.cn-huabei-1.xf-yun.com/v1/private/mcd9m97e6}
+  standard-tts-url: ${SPARK_STANDARD_TTS_URL:wss://tts-api.xfyun.cn/v2/tts}
+  standard-tts-host: ${SPARK_STANDARD_TTS_HOST:ws-api.xfyun.cn}
+  enable-standard-fallback: ${SPARK_ENABLE_STANDARD_FALLBACK:true}
+  standard-fallback-vcn: ${SPARK_STANDARD_FALLBACK_VCN:xiaoyan}
 
 qwen:
   source: qwen
   api-key: ${QWEN_API_KEY:sk-yours}
   model: ${QWEN_MODEL:qwen3-tts-flash}
   tts-url: ${QWEN_TTS_URL:https://dashscope.aliyuncs.com/api/v1}
+
+xiaomi:
+  source: xiaomi
+  api-key: ${XIAOMI_API_KEY:sk-yours}
+  model: ${XIAOMI_TTS_MODEL:mimo-v2-tts}
+  tts-url: ${XIAOMI_TTS_URL:https://api.xiaomimimo.com/v1}
+  voice: ${XIAOMI_TTS_VOICE:mimo_default}
+  response-format: ${XIAOMI_TTS_RESPONSE_FORMAT:mp3}
+  multimodal-model: ${XIAOMI_MULTIMODAL_MODEL:mimo-v2.5}
+  web-search-model: ${XIAOMI_WEB_SEARCH_MODEL:mimo-v2.5-pro}
+  multimodal-url: ${XIAOMI_MULTIMODAL_URL:https://api.xiaomimimo.com/v1}
+  multimodal-max-tokens: ${XIAOMI_MULTIMODAL_MAX_TOKENS:1024}

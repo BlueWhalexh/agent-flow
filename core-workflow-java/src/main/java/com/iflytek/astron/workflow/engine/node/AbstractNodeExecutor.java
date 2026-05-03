@@ -309,8 +309,13 @@ public abstract class AbstractNodeExecutor implements NodeExecutor {
             return result;
         }
 
-        ErrorStrategyEnum errorStrategy = ErrorStrategyEnum.fromCode(retryConfig.getErrorStrategy());
-        Map<String, Object> customOutput = retryConfig.getCustomOutput();
+        Integer errorStrategyCode = retryConfig.getErrorStrategy();
+        ErrorStrategyEnum errorStrategy = errorStrategyCode == null
+                ? ErrorStrategyEnum.INTERUPT
+                : ErrorStrategyEnum.fromCode(errorStrategyCode);
+        Map<String, Object> customOutput = retryConfig.getCustomOutput() == null
+                ? Map.of()
+                : retryConfig.getCustomOutput();
         if (errorStrategy == ErrorStrategyEnum.ERR_CODE) {
             // 错误码的场景
             storeOutputs(node, customOutput, variablePool);

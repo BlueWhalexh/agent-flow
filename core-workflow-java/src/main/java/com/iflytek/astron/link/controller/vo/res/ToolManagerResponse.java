@@ -4,7 +4,9 @@ import com.google.common.base.Joiner;
 import com.iflytek.astron.link.constant.LinkErrorCode;
 import lombok.Data;
 
+import java.util.Arrays;
 import java.util.Map;
+import java.util.Objects;
 
 @Data
 public class ToolManagerResponse {
@@ -30,7 +32,9 @@ public class ToolManagerResponse {
     public static ToolManagerResponse error(LinkErrorCode code, String... msg) {
         ToolManagerResponse response = response(code);
         if (msg.length > 0) {
-            response.setMessage(code.getMessage() + " " + Joiner.on(",").join(msg));
+            response.setMessage(code.getMessage() + " " + Joiner.on(",").join(Arrays.stream(msg)
+                    .filter(Objects::nonNull)
+                    .toList()));
         }
         response.setData(Map.of());
         return response;

@@ -1408,7 +1408,7 @@ public class WorkflowService extends ServiceImpl<WorkflowMapper, Workflow> {
                     Long modelId = bizNodeData.getNodeParam().getLong("modelId");
                     if (modelId != null) {
                         Model model = modelService.getById(modelId);
-                        bizNodeData.getNodeParam().put("apiKey", model.getApiKey());
+                        bizNodeData.getNodeParam().put("apiKey", modelService.getDecryptedApiKey(model));
                         bizNodeData.getNodeParam().put("apiSecret", StringUtils.EMPTY);
                     }
                 }
@@ -2274,7 +2274,7 @@ public class WorkflowService extends ServiceImpl<WorkflowMapper, Workflow> {
                     if (modelId != null) {
                         Model model = modelService.getById(modelId);
                         if (!configs.contains(prefix)) {
-                            bizNodeData.getNodeParam().put("apiKey", model.getApiKey());
+                            bizNodeData.getNodeParam().put("apiKey", modelService.getDecryptedApiKey(model));
                             bizNodeData.getNodeParam().put("apiSecret", StringUtils.EMPTY);
                         }
                     }

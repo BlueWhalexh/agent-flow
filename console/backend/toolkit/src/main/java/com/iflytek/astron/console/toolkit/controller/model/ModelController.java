@@ -49,6 +49,12 @@ public class ModelController {
         return modelService.checkAndDelete(modelId, request);
     }
 
+    @PostMapping("/republish")
+    @SpacePreAuth(key = "ModelController_republish_POST", module = "Model Management", point = "Republish Model", description = "Republish Model")
+    public ApiResult republishModel(@RequestParam(name = "modelId") Long modelId) {
+        return modelService.republishModel(modelId);
+    }
+
     @PostMapping("/list")
     @SpacePreAuth(key = "ModelController_list_POST", module = "Model Management", point = "Model List", description = "Model List")
     public ApiResult list(@RequestBody ModelDto dto, HttpServletRequest request) {

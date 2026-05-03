@@ -60,9 +60,16 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestTemplate;
 
+import javax.crypto.Cipher;
+import javax.crypto.spec.GCMParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.SecureRandom;
 import java.security.interfaces.RSAPrivateKey;
 import java.util.*;
+import java.util.Base64;
 import java.util.stream.Collectors;
 
 import static java.util.stream.Collectors.toList;
@@ -90,6 +97,12 @@ public class ModelService extends ServiceImpl<ModelMapper, Model> {
     private static final String CAT_MODEL_SECRET_KEY = "MODEL_SECRET_KEY";
     private static final String CODE_PRIVATE_KEY = "private_key";
     private static final String CODE_PUBLIC_KEY = "public_key";
+    private static final String API_KEY_ENCRYPTED_PREFIX = "enc_v1:";
+    private static final String API_KEY_PLACEHOLDER = "sk-personal";
+    private static final String AES_GCM_ALGORITHM = "AES/GCM/NoPadding";
+    private static final int AES_KEY_LENGTH = 16;
+    private static final int GCM_TAG_LENGTH = 128;
+    private static final int GCM_IV_LENGTH = 12;
 
     private static final String CAT_LLM_FILTER = "LLM_FILTER";
     private static final String CODE_FILTER_PLAN = "plan";
@@ -129,11 +142,11 @@ public class ModelService extends ServiceImpl<ModelMapper, Model> {
         // 1) Parse apiKey (use encrypted value from database when updating unchanged; otherwise decrypt)
         final String decryptedApiKey;
         if (request.getId() != null && Boolean.FALSE.equals(request.getApiKeyMasked())) {
-            Model byId = this.getById(request.getId());
+            Model byId = getOwnedModel(request.getId(), request.getUid(), SpaceInfoUtil.getSpaceId());
             if (byId == null) {
                 throw new BusinessException(ResponseEnum.MODEL_NOT_EXIST);
             }
-            decryptedApiKey = byId.getApiKey();
+            decryptedApiKey = getDecryptedApiKey(byId);
         } else {
             decryptedApiKey = decryptApiKey(request.getApiKey());
         }
@@ -167,10 +180,7 @@ public class ModelService extends ServiceImpl<ModelMapper, Model> {
 
 
     private String decryptApiKey(String apiKey) {
-        ConfigInfo modelSecretKey = configInfoMapper.selectOne(Wrappers.<ConfigInfo>lambdaQuery()
-                .eq(ConfigInfo::getCategory, "MODEL_SECRET_KEY")
-                .eq(ConfigInfo::getCode, "private_key")
-                .eq(ConfigInfo::getIsValid, 1));
+        ConfigInfo modelSecretKey = getModelSecretConfig(CODE_PRIVATE_KEY);
         if (modelSecretKey == null) {
             throw new BusinessException(ResponseEnum.MODEL_API_KEY_NOT_FOUND);
         }
@@ -182,6 +192,100 @@ public class ModelService extends ServiceImpl<ModelMapper, Model> {
             log.error("Decrypt API Key failed", e);
             throw new BusinessException(ResponseEnum.MODEL_APIKEY_LOAD_ERROR);
         }
+    }
+
+    public String getDecryptedApiKey(Model model) {
+        if (model == null || StringUtils.isBlank(model.getApiKey())) {
+            return model == null ? null : model.getApiKey();
+        }
+        if (Objects.equals(model.getType(), 2) || API_KEY_PLACEHOLDER.equals(model.getApiKey())) {
+            return model.getApiKey();
+        }
+        return decryptStoredApiKey(model.getApiKey());
+    }
+
+    private String encryptStoredApiKey(String apiKey) {
+        if (StringUtils.isBlank(apiKey) || apiKey.startsWith(API_KEY_ENCRYPTED_PREFIX)) {
+            return apiKey;
+        }
+        try {
+            byte[] iv = new byte[GCM_IV_LENGTH];
+            SecureRandom secureRandom = new SecureRandom();
+            secureRandom.nextBytes(iv);
+            Cipher cipher = Cipher.getInstance(AES_GCM_ALGORITHM);
+            cipher.init(Cipher.ENCRYPT_MODE, buildApiKeySecretKey(), new GCMParameterSpec(GCM_TAG_LENGTH, iv));
+            byte[] cipherText = cipher.doFinal(apiKey.getBytes(StandardCharsets.UTF_8));
+            return API_KEY_ENCRYPTED_PREFIX
+                    + Base64.getEncoder().encodeToString(iv)
+                    + ":"
+                    + Base64.getEncoder().encodeToString(cipherText);
+        } catch (Exception e) {
+            log.error("Encrypt stored API key failed", e);
+            throw new BusinessException(ResponseEnum.MODEL_APIKEY_LOAD_ERROR);
+        }
+    }
+
+    private String decryptStoredApiKey(String storedApiKey) {
+        if (StringUtils.isBlank(storedApiKey) || !storedApiKey.startsWith(API_KEY_ENCRYPTED_PREFIX)) {
+            return storedApiKey;
+        }
+        String[] parts = storedApiKey.split(":");
+        if (parts.length != 3) {
+            log.warn("Stored API key format invalid, fallback to raw string");
+            return storedApiKey;
+        }
+        try {
+            byte[] iv = Base64.getDecoder().decode(parts[1]);
+            byte[] cipherText = Base64.getDecoder().decode(parts[2]);
+            Cipher cipher = Cipher.getInstance(AES_GCM_ALGORITHM);
+            cipher.init(Cipher.DECRYPT_MODE, buildApiKeySecretKey(), new GCMParameterSpec(GCM_TAG_LENGTH, iv));
+            return new String(cipher.doFinal(cipherText), StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            log.error("Decrypt stored API key failed", e);
+            throw new BusinessException(ResponseEnum.MODEL_APIKEY_LOAD_ERROR);
+        }
+    }
+
+    private SecretKeySpec buildApiKeySecretKey() {
+        ConfigInfo modelSecretKey = getModelSecretConfig(CODE_PRIVATE_KEY);
+        if (modelSecretKey == null || StringUtils.isBlank(modelSecretKey.getValue())) {
+            throw new BusinessException(ResponseEnum.MODEL_API_KEY_NOT_FOUND);
+        }
+        try {
+            byte[] digest =
+                    MessageDigest.getInstance("SHA-256")
+                            .digest(modelSecretKey.getValue().getBytes(StandardCharsets.UTF_8));
+            return new SecretKeySpec(Arrays.copyOf(digest, AES_KEY_LENGTH), "AES");
+        } catch (Exception e) {
+            log.error("Build API key secret failed", e);
+            throw new BusinessException(ResponseEnum.MODEL_APIKEY_LOAD_ERROR);
+        }
+    }
+
+    private ConfigInfo getModelSecretConfig(String code) {
+        return configInfoMapper.selectOne(Wrappers.<ConfigInfo>lambdaQuery()
+                .eq(ConfigInfo::getCategory, CAT_MODEL_SECRET_KEY)
+                .eq(ConfigInfo::getCode, code)
+                .eq(ConfigInfo::getIsValid, 1));
+    }
+
+    private Model getOwnedModel(Long modelId, String uid, Long spaceId) {
+        LambdaQueryWrapper<Model> query = new LambdaQueryWrapper<Model>()
+                .eq(Model::getId, modelId)
+                .eq(Model::getIsDeleted, 0);
+        if (spaceId != null) {
+            query.eq(Model::getSpaceId, spaceId);
+        } else {
+            query.eq(Model::getUid, uid).isNull(Model::getSpaceId);
+        }
+        return mapper.selectOne(query);
+    }
+
+    private String maskApiKey(String apiKey) {
+        if (StringUtils.isBlank(apiKey) || apiKey.length() <= 8) {
+            return apiKey;
+        }
+        return apiKey.substring(0, 4) + "********" + apiKey.substring(apiKey.length() - 4);
     }
 
     private Map<String, Object> buildValidationPayload(String modelDomain) {
@@ -336,12 +440,7 @@ public class ModelService extends ServiceImpl<ModelMapper, Model> {
             model.setDomain(request.getDomain());
             model.setCreateTime(new Date());
         } else {
-            model =
-                    this.getOne(
-                            new LambdaQueryWrapper<Model>()
-                                    .eq(Model::getId, request.getId())
-                                    .eq(Model::getUid, request.getUid())
-                                    .eq(Model::getIsDeleted, 0));
+            model = getOwnedModel(request.getId(), request.getUid(), spaceId);
             if (model == null) {
                 throw new BusinessException(ResponseEnum.MODEL_NOT_EXIST);
             }
@@ -371,10 +470,27 @@ public class ModelService extends ServiceImpl<ModelMapper, Model> {
             Model exist =
                     this.getOne(
                             new LambdaQueryWrapper<Model>()
-                                    .eq(Model::getUid, request.getUid())
                                     .eq(Model::getName, request.getModelName())
                                     .ne(Model::getId, request.getId())
                                     .eq(Model::getIsDeleted, 0));
+            if (spaceId != null) {
+                exist =
+                        this.getOne(
+                                new LambdaQueryWrapper<Model>()
+                                        .eq(Model::getName, request.getModelName())
+                                        .eq(Model::getSpaceId, spaceId)
+                                        .ne(Model::getId, request.getId())
+                                        .eq(Model::getIsDeleted, 0));
+            } else {
+                exist =
+                        this.getOne(
+                                new LambdaQueryWrapper<Model>()
+                                        .eq(Model::getUid, request.getUid())
+                                        .eq(Model::getName, request.getModelName())
+                                        .isNull(Model::getSpaceId)
+                                        .ne(Model::getId, request.getId())
+                                        .eq(Model::getIsDeleted, 0));
+            }
             if (exist != null) {
                 throw new BusinessException(ResponseEnum.MODEL_NAME_EXISTED);
             }
@@ -387,6 +503,8 @@ public class ModelService extends ServiceImpl<ModelMapper, Model> {
                 updateNodeInfo(request);
             }
         }
+
+        request.setApiKey(encryptStoredApiKey(request.getApiKey()));
 
         // Common fields
         setCommonFileds(request, model);
@@ -803,24 +921,25 @@ public class ModelService extends ServiceImpl<ModelMapper, Model> {
     }
 
     private @NotNull LLMInfoVo actionWithSelfModel(Long modelId) {
-        Model model = mapper.selectOne(new LambdaQueryWrapper<Model>().eq(Model::getId, modelId));
+        String uid = UserInfoManagerHandler.getUserId();
+        Long spaceId = SpaceInfoUtil.getSpaceId();
+        Model model = getOwnedModel(modelId, uid, spaceId);
+        if (model == null) {
+            throw new BusinessException(ResponseEnum.MODEL_NOT_EXIST);
+        }
         LLMInfoVo vo = new LLMInfoVo();
         UserInfo userInfo = UserInfoManagerHandler.get();
-        String apiKey = model.getApiKey();
-        if (StringUtils.isNotBlank(apiKey) && apiKey.length() > 8) {
-            // First 4 digits + asterisks + last 4 digits
-            apiKey = apiKey.substring(0, 4) + "********" + apiKey.substring(apiKey.length() - 4);
-        }
+        String apiKey = maskApiKey(getDecryptedApiKey(model));
         if (model.getType() == 2 && !Objects.equals(model.getStatus(), ModelStatusEnum.RUNNING.getCode())) {
             this.flushStatus(model);
         }
+        BeanUtils.copyProperties(model, vo);
         vo.setName(model.getName());
         vo.setServiceId(model.getDomain());
         vo.setConfig(JSONArray.parseArray(model.getConfig()));
         vo.setApiKey(apiKey);
         vo.setLlmSource(0);
         vo.setAddress(s3UtilClient.getS3Prefix());
-        BeanUtils.copyProperties(model, vo);
         vo.setUserName(userInfo.getUsername());
         vo.setLlmId(model.getId());
         vo.setUrl(model.getUrl());
@@ -863,25 +982,16 @@ public class ModelService extends ServiceImpl<ModelMapper, Model> {
     }
 
     public String getPublicKey() {
-        ConfigInfo publicKey =
-                configInfoMapper.selectOne(
-                        new LambdaQueryWrapper<ConfigInfo>()
-                                .eq(ConfigInfo::getCategory, CAT_MODEL_SECRET_KEY)
-                                .eq(ConfigInfo::getCode, CODE_PUBLIC_KEY)
-                                .eq(ConfigInfo::getIsValid, 1));
+        ConfigInfo publicKey = getModelSecretConfig(CODE_PUBLIC_KEY);
         return Optional.ofNullable(publicKey).map(ConfigInfo::getValue).orElse(null);
     }
 
     @Transactional(rollbackFor = Exception.class)
     public ApiResult checkAndDelete(Long modelId, HttpServletRequest request) {
         String uid = UserInfoManagerHandler.getUserId();
-        Model model = this.getById(modelId);
+        Model model = getOwnedModel(modelId, uid, SpaceInfoUtil.getSpaceId());
         if (model == null) {
             throw new BusinessException(ResponseEnum.MODEL_NOT_EXIST);
-        }
-        if (!model.getUid().equals(uid)) {
-            log.warn("Unauthorized deletion, uid={}, modelId={}", uid, modelId);
-            throw new BusinessException(ResponseEnum.EXCEED_AUTHORITY);
         }
 
         checkWorkflowReference(uid, model);
@@ -898,6 +1008,36 @@ public class ModelService extends ServiceImpl<ModelMapper, Model> {
             result = this.removeById(modelId) && modelHandler.deleteModel(model.getRemark());
         }
         return ApiResult.success(result);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public ApiResult republishModel(Long modelId) {
+        String uid = UserInfoManagerHandler.getUserId();
+        Model model = getOwnedModel(modelId, uid, SpaceInfoUtil.getSpaceId());
+        if (model == null) {
+            throw new BusinessException(ResponseEnum.MODEL_NOT_EXIST);
+        }
+        if (!Objects.equals(model.getType(), 1)) {
+            throw new BusinessException(ResponseEnum.PARAM_ERROR);
+        }
+        ModelValidationRequest request = new ModelValidationRequest();
+        request.setId(model.getId());
+        request.setUid(uid);
+        request.setEndpoint(model.getUrl());
+        request.setApiKey(getDecryptedApiKey(model));
+        request.setApiKeyMasked(false);
+        request.setModelName(model.getName());
+        request.setDescription(model.getDesc());
+        request.setDomain(model.getDomain());
+        request.setTag(Optional.ofNullable(model.getTag())
+                .map(tag -> JSONArray.parseArray(tag, String.class))
+                .orElse(Collections.emptyList()));
+        request.setIcon(model.getImageUrl());
+        request.setColor(model.getColor());
+        request.setConfig(Optional.ofNullable(model.getConfig())
+                .map(config -> JSONArray.parseArray(config, Config.class))
+                .orElse(Collections.emptyList()));
+        return ApiResult.success(validateModel(request));
     }
 
     /**
@@ -1237,10 +1377,15 @@ public class ModelService extends ServiceImpl<ModelMapper, Model> {
     }
 
     private void ensureNoDuplicateName(LocalModelDto dto, boolean isCreate) {
+        Long spaceId = SpaceInfoUtil.getSpaceId();
         LambdaQueryWrapper<Model> dupLqw = Wrappers.<Model>lambdaQuery()
-                .eq(Model::getUid, dto.getUid())
                 .eq(Model::getName, dto.getModelName())
                 .eq(Model::getIsDeleted, 0);
+        if (spaceId != null) {
+            dupLqw.eq(Model::getSpaceId, spaceId);
+        } else {
+            dupLqw.eq(Model::getUid, dto.getUid()).isNull(Model::getSpaceId);
+        }
         if (!isCreate) {
             dupLqw.ne(Model::getId, dto.getId());
         }
@@ -1293,12 +1438,9 @@ public class ModelService extends ServiceImpl<ModelMapper, Model> {
     }
 
     private Model loadForEdit(LocalModelDto dto) {
-        Model model = this.getById(dto.getId());
+        Model model = getOwnedModel(dto.getId(), dto.getUid(), SpaceInfoUtil.getSpaceId());
         if (model == null || Objects.equals(model.getIsDeleted(), true)) {
             throw new BusinessException(ResponseEnum.MODEL_NOT_EXIST);
-        }
-        if (!Objects.equals(model.getUid(), dto.getUid())) {
-            throw new BusinessException(ResponseEnum.EXCEED_AUTHORITY);
         }
         model.setStatus(ModelStatusEnum.PENDING.getCode());
         return model;
@@ -1324,7 +1466,7 @@ public class ModelService extends ServiceImpl<ModelMapper, Model> {
         model.setReplicaCount(dto.getReplicaCount());
         model.setEnable(false);
         // Placeholder, in order to use pysdk
-        model.setApiKey("sk-personal");
+        model.setApiKey(API_KEY_PLACEHOLDER);
         model.setConfig(
                 Optional.ofNullable(dto.getConfig()).map(JSON::toJSONString).orElse(null));
     }

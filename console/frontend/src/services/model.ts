@@ -66,3 +66,9 @@ export async function createOrUpdateLocalModel(
 ): Promise<boolean> {
   return await http.post('/api/model/local-model', params);
 }
+
+export async function republishModelAPI(
+  modelId: string | number
+): Promise<void> {
+  return await http.post(`/api/model/republish?modelId=${modelId}`);
+}

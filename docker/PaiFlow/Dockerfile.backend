@@ -1,11 +1,18 @@
 FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/maven:3.9.9-eclipse-temurin-21-noble AS build
 WORKDIR /app
 
-# Copy the entire backend directory
-COPY console/backend /app/console/backend
+# Copy pom.xml files first for dependency caching
+COPY console/backend/pom.xml /app/console/backend/pom.xml
+COPY console/backend/hub/pom.xml /app/console/backend/hub/pom.xml
+COPY console/backend/commons/pom.xml /app/console/backend/commons/pom.xml
+COPY console/backend/toolkit/pom.xml /app/console/backend/toolkit/pom.xml
 
-# Build the project
+# Download dependencies (cached unless pom.xml changes)
 WORKDIR /app/console/backend
+RUN mvn dependency:go-offline -B
+
+# Copy source code and build
+COPY console/backend /app/console/backend
 RUN mvn clean package -DskipTests
 
 # Runtime stage

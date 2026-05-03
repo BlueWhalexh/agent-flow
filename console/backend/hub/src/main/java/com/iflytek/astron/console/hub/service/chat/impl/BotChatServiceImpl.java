@@ -186,10 +186,13 @@ public class BotChatServiceImpl implements BotChatService {
     @Override
     public void debugChatMessageBot(String text, String prompt, List<String> messages, String uid, String openedTool, String model, Long modelId, List<String> maasDatasetList, SseEmitter sseEmitter, String sseId) {
         try {
+            log.info("[BotDebug] 收到调试请求: sseId={}, model={}, modelId={}, uid={}", sseId, model, modelId, uid);
+
             int maxInputTokens = this.maxInputTokens;
             List<SparkChatRequest.MessageDto> messageList;
 
             if (modelId == null) {
+                log.info("[BotDebug] modelId为空，走Spark通道, model={}", model);
                 messageList = buildDebugMessageList(text, prompt, messages, maxInputTokens, maasDatasetList);
                 SparkChatRequest sparkChatRequest = new SparkChatRequest();
                 sparkChatRequest.setModel(model);
@@ -199,7 +202,13 @@ public class BotChatServiceImpl implements BotChatService {
                 sparkChatRequest.setEnableWebSearch(enableWebSearch(openedTool));
                 sparkChatService.chatStream(sparkChatRequest, sseEmitter, sseId, null, false, true);
             } else {
+                log.info("[BotDebug] modelId不为空，走自定义模型通道, modelId={}", modelId);
                 ModelConfigResult modelConfig = getModelConfiguration(modelId, sseEmitter);
+                log.info("[BotDebug] 获取到模型配置: name={}, domain={}, url={}, hasApiKey={}",
+                        modelConfig.llmInfoVo().getName(),
+                        modelConfig.llmInfoVo().getDomain(),
+                        modelConfig.llmInfoVo().getUrl(),
+                        modelConfig.llmInfoVo().getApiKey() != null && !modelConfig.llmInfoVo().getApiKey().isEmpty());
                 messageList = buildDebugMessageList(text, prompt, messages, modelConfig.maxInputTokens(), maasDatasetList);
                 Long spaceId = SpaceInfoUtil.getSpaceId();
                 if (!modelService.checkModelBase(LLMService.generate9DigitRandomFromId(modelConfig.llmInfoVo.getLlmId()),
@@ -622,6 +631,10 @@ public class BotChatServiceImpl implements BotChatService {
      * @return JSON object representing the prompt chat request
      */
     private JSONObject buildPromptChatRequest(LLMInfoVo llmInfoVo, List<SparkChatRequest.MessageDto> messages) {
+        log.info("[BotDebug] 构建自定义模型请求: name={}, domain={}, url={}, apiKeyPresent={}",
+                llmInfoVo.getName(), llmInfoVo.getDomain(), llmInfoVo.getUrl(),
+                llmInfoVo.getApiKey() != null && !llmInfoVo.getApiKey().isEmpty());
+
         JSONObject jsonObject = new JSONObject();
         jsonObject.put("url", llmInfoVo.getUrl());
         jsonObject.put("apiKey", llmInfoVo.getApiKey());

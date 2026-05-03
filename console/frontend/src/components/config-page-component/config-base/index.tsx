@@ -263,32 +263,51 @@ const BaseConfig: React.FC<ChatProps> = ({
   // 获取模型列表
   const getModelListData = (): void => {
     getModelList().then((res: ModelListData[]) => {
+      console.group('[ConfigBase] 模型列表加载');
+      console.log('模型列表数据:', res);
+      if (res) {
+        res.forEach((m, i) => {
+          console.log(`  [${i}] ${m.modelName} | modelId=${m.modelId} | modelDomain=${m.modelDomain} | isCustom=${m.isCustom}`);
+        });
+      }
+      console.groupEnd();
       setModelOptions(res || []);
     });
   };
 
   // 处理模型回显的函数
   const handleModelDisplay = (modelId?: string, modelDomain?: string): void => {
+    console.log('[ConfigBase] handleModelDisplay 调用:', { modelId, modelDomain, modelOptionsCount: modelOptions.length });
+
     if (modelOptions.length === 0) {
       // 如果 modelOptions 还没有加载，保存待处理的数据
+      console.log('[ConfigBase] modelOptions 未加载，保存为 pendingModelData');
       setPendingModelData({ modelId, modelDomain });
       return;
     }
 
     const matchedModel = findModelOption(modelId, modelDomain);
+    console.log('[ConfigBase] findModelOption 结果:', matchedModel);
+
     if (matchedModel) {
       // 找到匹配的模型，需要找到其在 modelOptions 中的索引
       const modelIndex = modelOptions.findIndex(
         option => option === matchedModel
       );
-      setModel(getModelUniqueKey(matchedModel, modelIndex));
+      const uniqueKey = getModelUniqueKey(matchedModel, modelIndex);
+      console.log('[ConfigBase] 设置模型 uniqueKey:', uniqueKey);
+      setModel(uniqueKey);
     } else {
       // 如果找不到匹配的模型，使用原来的逻辑
+      console.log('[ConfigBase] 未找到匹配模型，使用 modelDomain:', modelDomain || 'spark');
       setModel(modelDomain || 'spark');
     }
   };
 
   const handleModelChange = (value: string): void => {
+    console.log('[ConfigBase] handleModelChange:', value);
+    const selected = findModelOptionByUniqueKey(value);
+    console.log('[ConfigBase] 选中的模型:', selected);
     setModel(value);
   };
 
@@ -1826,19 +1845,25 @@ const BaseConfig: React.FC<ChatProps> = ({
               {showModelPk === 0 && (
                 <>
                   {!showTipPk && (
-                    <PromptTry
-                      ref={defaultPromptTryRef}
-                      baseinfo={baseinfo}
-                      inputExample={inputExample}
-                      coverUrl={coverUrl}
-                      selectSource={selectSource}
-                      prompt={prompt}
-                      model={model}
-                      promptText={promptNow}
-                      supportContext={supportContextFlag ? 1 : 0}
-                      choosedAlltool={choosedAlltool}
-                      findModelOptionByUniqueKey={findModelOptionByUniqueKey}
-                    />
+                    (() => {
+                      const selectedModel = findModelOptionByUniqueKey(model);
+                      console.log('[ConfigBase] 传给PromptTry的model:', model, '解析结果:', selectedModel?.modelName, 'isCustom:', selectedModel?.isCustom, 'modelId:', selectedModel?.modelId);
+                      return (
+                        <PromptTry
+                          ref={defaultPromptTryRef}
+                          baseinfo={baseinfo}
+                          inputExample={inputExample}
+                          coverUrl={coverUrl}
+                          selectSource={selectSource}
+                          prompt={prompt}
+                          model={model}
+                          promptText={promptNow}
+                          supportContext={supportContextFlag ? 1 : 0}
+                          choosedAlltool={choosedAlltool}
+                          findModelOptionByUniqueKey={findModelOptionByUniqueKey}
+                        />
+                      );
+                    })()
                   )}
                   {showTipPk &&
                     promptList.map((item: PageDataItem, index: number) => (

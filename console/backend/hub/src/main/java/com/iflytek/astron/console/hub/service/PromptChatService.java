@@ -70,16 +70,22 @@ public class PromptChatService {
         request.put("stream", true);
         String requestBody = JSON.toJSONString(request);
 
+        // [DEBUG] 自定义模型请求日志
+        String targetUrl = request.getString("url");
+        String apiKey = request.getString("apiKey");
+        String model = request.getString("model");
+        log.info("[PromptChat] 发起自定义模型请求: streamId={}, url={}, model={}, apiKeyPresent={}",
+                streamId, targetUrl, model, apiKey != null && !apiKey.isEmpty());
+
         Request httpRequest = new Request.Builder()
-                .url(request.getString("url"))
+                .url(targetUrl)
                 .post(RequestBody.create(requestBody, MediaType.get("application/json; charset=utf-8")))
-                .addHeader("Authorization", "Bearer " + request.getString("apiKey"))
+                .addHeader("Authorization", "Bearer " + apiKey)
                 .addHeader("Content-Type", "application/json")
                 .addHeader("Accept", "text/event-stream")
                 .build();
 
         Call call = httpClient.newCall(httpRequest);
-        log.info("request:{}", request);
 
         call.enqueue(new Callback() {
             /**

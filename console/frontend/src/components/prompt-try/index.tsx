@@ -145,6 +145,19 @@ const PromptTry = forwardRef<
       const esURL = `${baseURL}/chat-message/bot-debug`;
       const form = new FormData();
       const useModel = findModelOptionByUniqueKey(model || '');
+
+      // [DEBUG] 模型选择调试日志
+      console.group('[PromptTry] 模型调试信息');
+      console.log('传入的 model (uniqueKey):', model);
+      console.log('findModelOptionByUniqueKey 结果:', useModel);
+      console.log('是否自定义模型 (isCustom):', useModel?.isCustom);
+      console.log('模型名称:', useModel?.modelName);
+      console.log('模型域名 (modelDomain):', useModel?.modelDomain);
+      console.log('模型ID (modelId):', useModel?.modelId);
+      console.log('最终发送的 modelId:', useModel?.isCustom ? useModel.modelId : '(空 - 走Spark通道)');
+      console.log('最终发送的 model:', useModel?.modelDomain || 'spark');
+      console.groupEnd();
+
       if (useModel?.isCustom) {
         form.append('modelId', useModel.modelId);
       }
@@ -210,6 +223,13 @@ const PromptTry = forwardRef<
         },
       ]);
 
+      // [DEBUG] 请求发送日志
+      console.log('[PromptTry] 发送SSE请求:', esURL);
+      console.log('[PromptTry] 请求参数:');
+      for (const [key, value] of form.entries()) {
+        console.log(`  ${key}:`, value);
+      }
+
       fetchEventSource(esURL, {
         method: 'POST',
         body: form,
@@ -217,16 +237,24 @@ const PromptTry = forwardRef<
         openWhenHidden: true,
         signal: controller.signal,
         onopen(): Promise<void> {
+          console.log('[PromptTry] SSE连接已打开');
           return Promise.resolve();
         },
         onmessage(event: { data: string }): void {
+          // [DEBUG] SSE响应日志
+          console.log('[PromptTry] SSE收到数据:', event.data);
+
           const data: SSEData = JSON.parse(event.data);
           const { error, id, type, choices, end, content, message, code } =
             data;
           id && (currentSid.current = id.toString());
-          if (type === 'start') return;
+          if (type === 'start') {
+            console.log('[PromptTry] SSE开始信号');
+            return;
+          }
           setIsLoading(false);
           if (code || error) {
+            console.error('[PromptTry] SSE错误:', { code, error, message });
             const errorMsg = (message as string) || '发生未知错误';
             setMessageList(prev => {
               const updated = [...prev];
@@ -241,6 +269,8 @@ const PromptTry = forwardRef<
           }
 
           if (end) {
+            console.log('[PromptTry] SSE结束, 最终回答长度:', ans.length);
+            console.log('[PromptTry] 最终回答内容:', ans.substring(0, 200) + (ans.length > 200 ? '...' : ''));
             setIsLoading(false);
             setIsCompleted(true);
             setMessageList(prev => {
@@ -278,16 +308,16 @@ const PromptTry = forwardRef<
           });
         },
         onerror(err: Error): void {
+          console.error('[PromptTry] SSE连接错误:', err);
           setIsLoading(false);
           setIsCompleted(true);
           controllerRef.current.abort('连接错误');
-          console.error('esError', err);
         },
       }).catch((err: Error) => {
+        console.error('[PromptTry] fetchEventSource异常:', err);
         setIsLoading(false);
         setIsCompleted(true);
         controllerRef.current.abort('请求失败');
-        console.error('fetchError', err);
       });
     };
 

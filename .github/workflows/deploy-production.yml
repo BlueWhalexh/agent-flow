@@ -4,14 +4,19 @@ on:
   workflow_dispatch:
     inputs:
       image_tag:
-        description: "镜像标签，例如 latest 或 sha-xxxx"
+        description: "Image tag to deploy, for example latest or sha-xxxx"
         required: true
         default: "latest"
         type: string
       services:
-        description: "要部署的服务，all 或用逗号分隔"
+        description: "Services to deploy, use all or a comma-separated list"
         required: true
         default: "core-workflow-java"
+        type: string
+      wait_timeout:
+        description: "Seconds to wait for container health checks"
+        required: true
+        default: "240"
         type: string
 
 concurrency:
@@ -56,12 +61,14 @@ jobs:
         shell: bash
         env:
           SERVICES_INPUT: ${{ github.event.inputs.services }}
+          WAIT_TIMEOUT_INPUT: ${{ github.event.inputs.wait_timeout }}
         run: |
           services="$(echo "${SERVICES_INPUT}" | tr ',' ' ')"
           ssh -i ~/.ssh/id_ed25519 "${{ secrets.DO_USER }}@${{ secrets.DO_HOST }}" "\
             chmod +x /opt/PaiFlow/scripts/server/deploy-ghcr.sh && \
             export IMAGE_PREFIX='${{ steps.meta.outputs.image_prefix }}' && \
             export IMAGE_TAG='${{ github.event.inputs.image_tag }}' && \
+            export WAIT_TIMEOUT='${WAIT_TIMEOUT_INPUT}' && \
             export GHCR_USERNAME='${{ secrets.GHCR_USERNAME }}' && \
             export GHCR_TOKEN='${{ secrets.GHCR_TOKEN }}' && \
             /opt/PaiFlow/scripts/server/deploy-ghcr.sh ${services}"

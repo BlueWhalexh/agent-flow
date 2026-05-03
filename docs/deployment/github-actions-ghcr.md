@@ -94,6 +94,43 @@ chmod +x /opt/PaiFlow/scripts/server/deploy-ghcr.sh
 5. 等待镜像构建完成
 6. 手动触发生产部署
 
+## 现在的默认原则
+
+生产机不再承担应用构建任务。
+
+- GitHub Actions 负责构建镜像
+- GHCR 负责保存镜像
+- 服务器只负责：
+  - `docker login`
+  - `docker compose pull`
+  - `docker compose up -d --wait`
+
+这样可以避免：
+
+- Java 或前端本地构建把生产机 CPU、内存、磁盘 I/O 打满
+- SSH 在构建窗口里变得不稳定
+- “代码已经同步但服务还在本地编译”这种半完成状态
+
+## 部署脚本行为
+
+[deploy-ghcr.sh](/E:/Project/PaiFlow/scripts/server/deploy-ghcr.sh) 现在会：
+
+1. 校验 `.env`、`docker-compose.prod.yaml`、GHCR 凭证、镜像前缀和 tag
+2. 只拉取目标服务镜像
+3. 执行 `docker compose up -d --wait`
+4. 如果某个服务进入 `unhealthy`，自动输出该容器最近日志并失败退出
+
+## 健康检查
+
+[docker-compose.prod.yaml](/E:/Project/PaiFlow/docker/PaiFlow/docker-compose.prod.yaml) 现在给这些服务补了健康检查：
+
+- `console-frontend`
+- `console-hub`
+- `core-workflow-java`
+- `core-aitools`
+
+这意味着生产部署不再只看“容器启动了没有”，而是会显式等待服务进入可用状态。
+
 ### 回滚
 
 如果新版本有问题，不改代码，直接在 `Deploy Production` 里把 `image_tag` 改成旧的 `sha-xxxx` 即可回滚。

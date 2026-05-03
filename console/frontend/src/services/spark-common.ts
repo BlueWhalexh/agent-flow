@@ -25,6 +25,22 @@ export const updateUserInfo = ({
   return http.post(`/user-info/update`, { nickname, avatar });
 };
 
+export const changePassword = ({
+  oldPassword,
+  newPassword,
+  confirmPassword,
+}: {
+  oldPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+}): Promise<any> => {
+  return http.post(`/user-info/change-password`, {
+    oldPassword,
+    newPassword,
+    confirmPassword,
+  });
+};
+
 // 拒绝邀请
 export const refuseInvite = (params: any): Promise<any> => {
   return http.post(`/invite-record/refuse-invite?inviteId=${params.inviteId}`);

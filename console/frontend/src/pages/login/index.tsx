@@ -21,14 +21,16 @@ const LoginPage = () => {
         localStorage.setItem('accessToken', response.accessToken);
         if (response.refreshToken) {
           localStorage.setItem('refreshToken', response.refreshToken);
+        } else {
+          localStorage.removeItem('refreshToken');
         }
-        message.success('登录成功！');
+        message.success('Login successful');
         navigate('/home');
       } else {
-        message.error('登录失败，请重试');
+        message.error('Login failed, please try again');
       }
     } catch (error: any) {
-      message.error(error?.message || '登录失败');
+      message.error(error?.message || 'Login failed');
     } finally {
       setLoading(false);
     }
@@ -39,7 +41,7 @@ const LoginPage = () => {
       <div className="login-container">
         <div className="login-header">
           <h1>PaiFlow</h1>
-          <p>本地开发登录</p>
+          <p>Local account sign in</p>
         </div>
         <Form
           name="login"
@@ -49,22 +51,22 @@ const LoginPage = () => {
         >
           <Form.Item
             name="username"
-            rules={[{ required: true, message: '请输入用户名！' }]}
+            rules={[{ required: true, message: 'Please enter username' }]}
           >
             <Input
               prefix={<UserOutlined />}
-              placeholder="用户名 (admin)"
+              placeholder="Username"
               size="large"
             />
           </Form.Item>
 
           <Form.Item
             name="password"
-            rules={[{ required: true, message: '请输入密码！' }]}
+            rules={[{ required: true, message: 'Please enter password' }]}
           >
             <Input.Password
               prefix={<LockOutlined />}
-              placeholder="密码 (123)"
+              placeholder="Password"
               size="large"
             />
           </Form.Item>
@@ -78,14 +80,10 @@ const LoginPage = () => {
               loading={loading}
               block
             >
-              登录
+              Sign in
             </Button>
           </Form.Item>
         </Form>
-        <div className="login-hint">
-          <p>默认账号：admin</p>
-          <p>默认密码：123</p>
-        </div>
       </div>
     </div>
   );

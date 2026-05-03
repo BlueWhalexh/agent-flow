@@ -24,13 +24,13 @@ const LoginPage = () => {
         } else {
           localStorage.removeItem('refreshToken');
         }
-        message.success('Login successful');
+        message.success('登录成功');
         navigate('/home');
       } else {
-        message.error('Login failed, please try again');
+        message.error('登录失败，请重试');
       }
     } catch (error: any) {
-      message.error(error?.message || 'Login failed');
+      message.error(error?.message || '登录失败');
     } finally {
       setLoading(false);
     }
@@ -41,7 +41,7 @@ const LoginPage = () => {
       <div className="login-container">
         <div className="login-header">
           <h1>PaiFlow</h1>
-          <p>Local account sign in</p>
+          <p>本地账号登录</p>
         </div>
         <Form
           name="login"
@@ -51,22 +51,22 @@ const LoginPage = () => {
         >
           <Form.Item
             name="username"
-            rules={[{ required: true, message: 'Please enter username' }]}
+            rules={[{ required: true, message: '请输入用户名' }]}
           >
             <Input
               prefix={<UserOutlined />}
-              placeholder="Username"
+              placeholder="用户名"
               size="large"
             />
           </Form.Item>
 
           <Form.Item
             name="password"
-            rules={[{ required: true, message: 'Please enter password' }]}
+            rules={[{ required: true, message: '请输入密码' }]}
           >
             <Input.Password
               prefix={<LockOutlined />}
-              placeholder="Password"
+              placeholder="密码"
               size="large"
             />
           </Form.Item>
@@ -80,7 +80,7 @@ const LoginPage = () => {
               loading={loading}
               block
             >
-              Sign in
+              登录
             </Button>
           </Form.Item>
         </Form>

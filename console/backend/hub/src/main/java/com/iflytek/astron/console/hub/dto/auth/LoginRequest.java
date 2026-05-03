@@ -3,9 +3,9 @@ package com.iflytek.astron.console.hub.dto.auth;
 import jakarta.validation.constraints.NotBlank;
 
 public record LoginRequest(
-        @NotBlank(message = "username is required")
+        @NotBlank(message = "请输入用户名")
         String username,
-        @NotBlank(message = "password is required")
+        @NotBlank(message = "请输入密码")
         String password
 ) {
 }

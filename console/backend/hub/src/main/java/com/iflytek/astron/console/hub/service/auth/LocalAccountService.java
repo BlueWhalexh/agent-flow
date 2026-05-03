@@ -32,7 +32,7 @@ public class LocalAccountService {
             String upgradedHash = passwordHashService.hash(password);
             boolean updated = userInfoDataService.updateUserPasswordHash(userInfo.getUid(), upgradedHash);
             if (!updated) {
-                throw new BusinessException(ResponseEnum.OPERATION_FAILED, "bootstrap password upgrade failed");
+                throw new BusinessException(ResponseEnum.OPERATION_FAILED, "密码初始化失败");
             }
             userInfo.setPasswordHash(upgradedHash);
         }
@@ -44,23 +44,23 @@ public class LocalAccountService {
 
     public void changeCurrentUserPassword(String oldPassword, String newPassword, String confirmPassword) {
         if (!StringUtils.equals(newPassword, confirmPassword)) {
-            throw new BusinessException(ResponseEnum.PARAMETER_ERROR, "new passwords do not match");
+            throw new BusinessException(ResponseEnum.PARAMETER_ERROR, "两次输入的新密码不一致");
         }
         UserInfo currentUser = userInfoDataService.getCurrentUserInfo();
         if (!passwordHashService.matches(oldPassword, currentUser.getPasswordHash())) {
-            throw new BusinessException(ResponseEnum.PARAMETER_ERROR, "old password is incorrect");
+            throw new BusinessException(ResponseEnum.PARAMETER_ERROR, "原密码错误");
         }
         if (passwordHashService.matches(newPassword, currentUser.getPasswordHash())) {
-            throw new BusinessException(ResponseEnum.PARAMETER_ERROR, "new password must be different");
+            throw new BusinessException(ResponseEnum.PARAMETER_ERROR, "新密码不能与原密码相同");
         }
         boolean updated = userInfoDataService.updateCurrentUserPasswordHash(passwordHashService.hash(newPassword));
         if (!updated) {
-            throw new BusinessException(ResponseEnum.OPERATION_FAILED, "password update failed");
+            throw new BusinessException(ResponseEnum.OPERATION_FAILED, "密码修改失败");
         }
     }
 
     private BusinessException loginFailed() {
-        return new BusinessException(ResponseEnum.UNAUTHORIZED, "username or password is incorrect");
+        return new BusinessException(ResponseEnum.UNAUTHORIZED, "用户名或密码错误");
     }
 
     private boolean canUpgradeFromBootstrapPassword(UserInfo userInfo, String password) {

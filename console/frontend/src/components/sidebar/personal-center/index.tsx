@@ -30,7 +30,7 @@ interface TabItem {
   tab: string;
 }
 
-const tabs: TabItem[] = [{ tab: 'Recent' }, { tab: 'Favorites' }];
+const tabs: TabItem[] = [{ tab: '最近使用' }, { tab: '收藏' }];
 
 const EmptyState: FC = () => (
   <div className={styles.emptyBox}>
@@ -114,7 +114,7 @@ const PersonalCenterHeader: FC = () => {
       avatar: userInfo.avatar,
     })
       .then(() => {
-        message.success('Profile updated');
+        message.success('资料更新成功');
         useUserStore.setState({
           user: {
             ...userInfo,
@@ -124,7 +124,7 @@ const PersonalCenterHeader: FC = () => {
         setShowInput(false);
       })
       .catch((err: any) => {
-        message.error(err?.message || 'Update failed');
+        message.error(err?.message || '更新失败');
       });
   };
 
@@ -136,13 +136,13 @@ const PersonalCenterHeader: FC = () => {
     setPasswordLoading(true);
     try {
       await changePassword(values);
-      message.success('Password updated, please sign in again');
+      message.success('密码修改成功，请重新登录');
       form.resetFields();
       setPasswordOpen(false);
       useUserStore.getState().logOut();
       window.location.href = '/login';
     } catch (error: any) {
-      message.error(error?.message || 'Password update failed');
+      message.error(error?.message || '密码修改失败');
     } finally {
       setPasswordLoading(false);
     }
@@ -158,7 +158,7 @@ const PersonalCenterHeader: FC = () => {
               nickname: infoName,
               avatar: url,
             }).then(() => {
-              message.success('Profile updated');
+              message.success('资料更新成功');
               useUserStore.setState({
                 user: {
                   ...userInfo,
@@ -176,7 +176,7 @@ const PersonalCenterHeader: FC = () => {
             <>
               <Input
                 value={infoName}
-                placeholder="Nickname"
+                placeholder="昵称"
                 showCount
                 maxLength={20}
                 onChange={e => setInfoName(e.target.value)}
@@ -219,12 +219,12 @@ const PersonalCenterHeader: FC = () => {
         </div>
         <div className={styles.flexInfo}>
           <img src={userIcon} alt="" />
-          <div className={styles.uid}>Username: {userInfo?.username}</div>
+          <div className={styles.uid}>用户名：{userInfo?.username}</div>
           <img
             onClick={() => {
               copyText({
                 text: `${userInfo?.username}`,
-                successText: 'Copied',
+                successText: '已复制',
               });
             }}
             className={styles.copy}
@@ -234,13 +234,13 @@ const PersonalCenterHeader: FC = () => {
         </div>
         <div style={{ marginTop: 12 }}>
           <Button type="link" style={{ padding: 0 }} onClick={() => setPasswordOpen(true)}>
-            Change password
+            修改密码
           </Button>
         </div>
       </div>
       <Modal
         open={passwordOpen}
-        title="Change password"
+        title="修改密码"
         onCancel={() => {
           setPasswordOpen(false);
           form.resetFields();
@@ -250,42 +250,42 @@ const PersonalCenterHeader: FC = () => {
       >
         <Form form={form} layout="vertical" onFinish={handleChangePassword}>
           <Form.Item
-            label="Current password"
+            label="原密码"
             name="oldPassword"
-            rules={[{ required: true, message: 'Please enter current password' }]}
+            rules={[{ required: true, message: '请输入原密码' }]}
           >
-            <Input.Password placeholder="Current password" />
+            <Input.Password placeholder="请输入原密码" />
           </Form.Item>
           <Form.Item
-            label="New password"
+            label="新密码"
             name="newPassword"
             rules={[
-              { required: true, message: 'Please enter new password' },
-              { min: 6, message: 'New password must be at least 6 characters' },
+              { required: true, message: '请输入新密码' },
+              { min: 6, message: '密码长度不能少于6位' },
             ]}
           >
-            <Input.Password placeholder="New password" />
+            <Input.Password placeholder="请输入新密码" />
           </Form.Item>
           <Form.Item
-            label="Confirm new password"
+            label="确认新密码"
             name="confirmPassword"
             dependencies={['newPassword']}
             rules={[
-              { required: true, message: 'Please confirm new password' },
+              { required: true, message: '请再次输入新密码' },
               ({ getFieldValue }) => ({
                 validator(_, value) {
                   if (!value || getFieldValue('newPassword') === value) {
                     return Promise.resolve();
                   }
-                  return Promise.reject(new Error('The two passwords do not match'));
+                  return Promise.reject(new Error('两次输入的密码不一致'));
                 },
               }),
             ]}
           >
-            <Input.Password placeholder="Confirm new password" />
+            <Input.Password placeholder="请再次输入新密码" />
           </Form.Item>
           <Button type="primary" htmlType="submit" loading={passwordLoading} block>
-            Save password
+            保存密码
           </Button>
         </Form>
       </Modal>
@@ -389,8 +389,8 @@ const PersonalCenter: FC<PersonalCenterProps> = ({
                 <img src={require('@/assets/imgs/sidebar/warning.svg')} alt="" />
                 <span>
                   {activeIndex === 0
-                    ? 'Remove this conversation?'
-                    : 'Remove this favorite?'}
+                    ? '确定删除该对话？'
+                    : '确定删除该收藏？'}
                 </span>
               </div>
             </Modal>

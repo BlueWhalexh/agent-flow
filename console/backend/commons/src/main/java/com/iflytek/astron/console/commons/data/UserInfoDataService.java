@@ -91,6 +91,12 @@ public interface UserInfoDataService {
     /** Current user agrees to user agreement */
     boolean agreeUserAgreement();
 
+    /** Update current user's password hash */
+    boolean updateCurrentUserPasswordHash(String passwordHash);
+
+    /** Update specified user's password hash */
+    boolean updateUserPasswordHash(String uid, String passwordHash);
+
     /** Update user's enterprise service type */
     boolean updateUserEnterpriseServiceType(String uid, EnterpriseServiceTypeEnum serviceType);
 

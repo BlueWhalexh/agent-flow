@@ -42,7 +42,6 @@ export interface UserState {
 }
 
 const useUserStore = create<UserState>((set, get) => ({
-  // 初始状态
   user: {} as User,
   isLogin: !!get()?.user?.uid,
   getIsLogin: () => {
@@ -50,12 +49,13 @@ const useUserStore = create<UserState>((set, get) => ({
     const hasUser = !!get()?.user?.uid;
     return hasValidToken && hasUser;
   },
-  // 操作方法
   getUserInfo: async (): Promise<void> => {
     try {
       const userData = await getUserInfoMe();
       set({ user: userData });
     } catch (error) {
+      tokenStorage.clearTokens();
+      set({ user: {} as User });
       console.error('获取用户信息失败', error);
     }
   },
@@ -92,7 +92,6 @@ const useUserStore = create<UserState>((set, get) => ({
     };
   },
   logOut: (): void => {
-    // 删除accessToken，refreshToken
     tokenStorage.clearTokens();
     set({ user: {} as User });
   },

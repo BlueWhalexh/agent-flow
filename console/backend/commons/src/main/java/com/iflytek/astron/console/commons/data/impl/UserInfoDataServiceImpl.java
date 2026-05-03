@@ -442,6 +442,27 @@ public class UserInfoDataServiceImpl implements UserInfoDataService {
     }
 
     @Override
+    public boolean updateCurrentUserPasswordHash(String passwordHash) {
+        if (StringUtils.isBlank(passwordHash)) {
+            return false;
+        }
+        String currentUid = RequestContextUtil.getUID();
+        return updateUserPasswordHash(currentUid, passwordHash);
+    }
+
+    @Override
+    public boolean updateUserPasswordHash(String uid, String passwordHash) {
+        if (uid == null || StringUtils.isBlank(passwordHash)) {
+            return false;
+        }
+        LambdaUpdateWrapper<UserInfo> wrapper = new LambdaUpdateWrapper<>();
+        wrapper.eq(UserInfo::getUid, uid)
+                .set(UserInfo::getPasswordHash, passwordHash)
+                .set(UserInfo::getUpdateTime, LocalDateTime.now());
+        return userInfoMapper.update(null, wrapper) > 0;
+    }
+
+    @Override
     public boolean updateUserEnterpriseServiceType(String uid, EnterpriseServiceTypeEnum serviceType) {
         if (uid == null) {
             return false;

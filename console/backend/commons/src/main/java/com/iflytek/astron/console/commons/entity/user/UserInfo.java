@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.iflytek.astron.console.commons.enums.space.EnterpriseServiceTypeEnum;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
@@ -33,6 +34,10 @@ public class UserInfo {
 
     @Schema(description = "Mobile number")
     private String mobile;
+
+    @JsonIgnore
+    @Schema(description = "Password hash")
+    private String passwordHash;
 
     @Schema(description = "Account status: 0 inactive, 1 active, 2 frozen")
     private Integer accountStatus;

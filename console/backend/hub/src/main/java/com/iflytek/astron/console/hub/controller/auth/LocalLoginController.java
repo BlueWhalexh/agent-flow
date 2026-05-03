@@ -28,21 +28,30 @@ public class LocalLoginController {
 
     @PostMapping("/login")
     public Result<Map<String, String>> login(@Valid @RequestBody LoginRequest request) {
-        log.info("Local login attempt: username={}", request.username());
-        UserInfo userInfo = localAccountService.authenticate(request.username(), request.password());
+        try {
+            log.info("登录请求: username={}", request.username());
+            UserInfo userInfo = localAccountService.authenticate(request.username(), request.password());
 
-        Map<String, String> result = new HashMap<>();
-        result.put("accessToken", localAuthTokenService.createAccessToken(userInfo));
-        log.info("Local login successful for user: {}", request.username());
-        return Result.success(result);
+            Map<String, String> result = new HashMap<>();
+            result.put("accessToken", localAuthTokenService.createAccessToken(userInfo));
+            log.info("登录成功: username={}", request.username());
+            return Result.success(result);
+        } catch (Exception e) {
+            log.warn("登录失败: username={}, reason={}", request.username(), e.getMessage());
+            return Result.failure(40001, e.getMessage());
+        }
     }
 
     @PostMapping("/auth/change-password")
     public Result<Boolean> changePassword(@Valid @RequestBody ChangePasswordRequest request) {
-        localAccountService.changeCurrentUserPassword(
-                request.oldPassword(),
-                request.newPassword(),
-                request.confirmPassword());
-        return Result.success(Boolean.TRUE);
+        try {
+            localAccountService.changeCurrentUserPassword(
+                    request.oldPassword(),
+                    request.newPassword(),
+                    request.confirmPassword());
+            return Result.success(Boolean.TRUE);
+        } catch (Exception e) {
+            return Result.failure(e.getMessage());
+        }
     }
 }

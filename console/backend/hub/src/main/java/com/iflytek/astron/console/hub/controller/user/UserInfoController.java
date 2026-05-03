@@ -2,10 +2,10 @@ package com.iflytek.astron.console.hub.controller.user;
 
 import com.iflytek.astron.console.commons.data.UserInfoDataService;
 import com.iflytek.astron.console.commons.entity.user.UserInfo;
-import com.iflytek.astron.console.commons.response.ApiResult;
 import com.iflytek.astron.console.hub.dto.auth.ChangePasswordRequest;
 import com.iflytek.astron.console.hub.dto.user.UpdateUserBasicInfoRequest;
 import com.iflytek.astron.console.hub.service.auth.LocalAccountService;
+import com.iflytek.astron.console.toolkit.common.Result;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/user-info")
-@Tag(name = "User Information")
+@Tag(name = "用户信息")
 @Slf4j
 @RequiredArgsConstructor
 public class UserInfoController {
@@ -29,36 +29,40 @@ public class UserInfoController {
     private final LocalAccountService localAccountService;
 
     @GetMapping("/me")
-    @Operation(summary = "Get current user information")
-    public ApiResult<UserInfo> getCurrentUserInfo() {
+    @Operation(summary = "获取当前用户信息")
+    public Result<UserInfo> getCurrentUserInfo() {
         UserInfo userInfo = userInfoDataService.getCurrentUserInfo();
-        log.debug("Successfully retrieved current user information: uid={}", userInfo.getUid());
-        return ApiResult.success(userInfo);
+        log.debug("获取当前用户信息成功: uid={}", userInfo.getUid());
+        return Result.success(userInfo);
     }
 
     @PostMapping("/update")
-    @Operation(summary = "Update current user basic information (nickname, avatar)")
-    public ApiResult<UserInfo> updateCurrentUserBasicInfo(@Valid @RequestBody UpdateUserBasicInfoRequest request) {
+    @Operation(summary = "更新当前用户基本信息（昵称、头像）")
+    public Result<UserInfo> updateCurrentUserBasicInfo(@Valid @RequestBody UpdateUserBasicInfoRequest request) {
         if (!StringUtils.hasText(request.nickname()) && !StringUtils.hasText(request.avatar())) {
-            return ApiResult.success(userInfoDataService.getCurrentUserInfo());
+            return Result.success(userInfoDataService.getCurrentUserInfo());
         }
         UserInfo updated = userInfoDataService.updateCurrentUserBasicInfo(request.nickname(), request.avatar());
-        return ApiResult.success(updated);
+        return Result.success(updated);
     }
 
     @PostMapping("/agreement")
-    @Operation(summary = "Current user agrees to user agreement")
-    public ApiResult<Boolean> agreeUserAgreement() {
-        return ApiResult.success(userInfoDataService.agreeUserAgreement());
+    @Operation(summary = "当前用户同意用户协议")
+    public Result<Boolean> agreeUserAgreement() {
+        return Result.success(userInfoDataService.agreeUserAgreement());
     }
 
     @PostMapping("/change-password")
-    @Operation(summary = "Current user changes password")
-    public ApiResult<Boolean> changePassword(@Valid @RequestBody ChangePasswordRequest request) {
-        localAccountService.changeCurrentUserPassword(
-                request.oldPassword(),
-                request.newPassword(),
-                request.confirmPassword());
-        return ApiResult.success(Boolean.TRUE);
+    @Operation(summary = "当前用户修改密码")
+    public Result<Boolean> changePassword(@Valid @RequestBody ChangePasswordRequest request) {
+        try {
+            localAccountService.changeCurrentUserPassword(
+                    request.oldPassword(),
+                    request.newPassword(),
+                    request.confirmPassword());
+            return Result.success(Boolean.TRUE);
+        } catch (Exception e) {
+            return Result.failure(e.getMessage());
+        }
     }
 }

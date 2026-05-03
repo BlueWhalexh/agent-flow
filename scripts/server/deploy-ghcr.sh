@@ -5,6 +5,7 @@ PROJECT_ROOT="${PROJECT_ROOT:-/opt/PaiFlow}"
 COMPOSE_DIR="${PROJECT_ROOT}/docker/PaiFlow"
 COMPOSE_FILE="${COMPOSE_DIR}/docker-compose.prod.yaml"
 DEFAULT_SERVICES=("console-frontend" "console-hub" "core-workflow-java" "core-aitools")
+WAIT_TIMEOUT="${WAIT_TIMEOUT:-240}"
 
 if [[ ! -f "${COMPOSE_DIR}/.env" ]]; then
   echo "missing ${COMPOSE_DIR}/.env" >&2
@@ -42,5 +43,17 @@ export IMAGE_PREFIX
 export IMAGE_TAG
 
 docker compose -f "${COMPOSE_FILE}" pull "${services[@]}"
-docker compose -f "${COMPOSE_FILE}" up -d "${services[@]}"
+docker compose -f "${COMPOSE_FILE}" up -d --wait --wait-timeout "${WAIT_TIMEOUT}" "${services[@]}"
 docker compose -f "${COMPOSE_FILE}" ps
+
+for service in "${services[@]}"; do
+  container="paiflow-${service}"
+  if docker inspect "${container}" >/dev/null 2>&1; then
+    health_status="$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "${container}")"
+    if [[ "${health_status}" == "unhealthy" ]]; then
+      echo "service ${service} is unhealthy" >&2
+      docker logs --tail 120 "${container}" >&2 || true
+      exit 1
+    fi
+  fi
+done

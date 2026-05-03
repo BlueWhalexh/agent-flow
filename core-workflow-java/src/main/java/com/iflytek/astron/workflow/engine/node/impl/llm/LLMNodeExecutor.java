@@ -26,6 +26,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * LLM node executor
@@ -190,9 +192,16 @@ public class LLMNodeExecutor extends AbstractNodeExecutor {
         if (CollectionUtils.isEmpty(outItems)) {
             outputs.put("output", llmRes.content());
         } else {
-            // fixme 先只是先LLM返回text文本的场景; 后续需要考虑结构化、或者图片返回的场景
-            OutputItem item = outItems.get(0);
-            outputs.put(item.getName(), llmRes.content());
+            JSONObject structuredOutput = parseStructuredOutput(llmRes.content());
+            if (structuredOutput != null && shouldUseStructuredOutput(outItems)) {
+                for (OutputItem item : outItems) {
+                    Object value = structuredOutput.get(item.getName());
+                    outputs.put(item.getName(), value == null ? "" : String.valueOf(value));
+                }
+            } else {
+                OutputItem item = outItems.get(0);
+                outputs.put(item.getName(), llmRes.content());
+            }
 
             // 针对思考过程，做一个保留字段的设置，即 reason 表示大模型的推理过程信息
             outItems.stream().filter(s -> "reason".equalsIgnoreCase(s.getName())).findAny().ifPresent(s -> {
@@ -200,6 +209,35 @@ public class LLMNodeExecutor extends AbstractNodeExecutor {
             });
         }
         return outputs;
+    }
+
+    private boolean shouldUseStructuredOutput(List<OutputItem> outItems) {
+        return outItems.size() > 1 || outItems.stream().noneMatch(item -> "output".equals(item.getName()));
+    }
+
+    private JSONObject parseStructuredOutput(String content) {
+        if (StringUtils.isBlank(content)) {
+            return null;
+        }
+
+        String json = content.trim();
+        Matcher matcher = Pattern.compile("(?s)```(?:json)?\\s*(\\{.*?})\\s*```").matcher(json);
+        if (matcher.find()) {
+            json = matcher.group(1).trim();
+        }
+
+        int start = json.indexOf('{');
+        int end = json.lastIndexOf('}');
+        if (start >= 0 && end > start) {
+            json = json.substring(start, end + 1);
+        }
+
+        try {
+            return JSONObject.parseObject(json);
+        } catch (Exception e) {
+            log.warn("LLM output is not valid JSON, fallback to text output");
+            return null;
+        }
     }
 
     private GenerateUsage formatUsage(Usage usage) {

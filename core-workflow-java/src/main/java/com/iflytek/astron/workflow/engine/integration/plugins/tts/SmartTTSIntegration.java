@@ -23,10 +23,12 @@ import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.TimeZone;
@@ -62,6 +64,18 @@ public class SmartTTSIntegration implements TtsIntegration {
     @Value("${spark.source:spark}")
     private String source;
 
+    @Value("${spark.standard-tts-url:wss://tts-api.xfyun.cn/v2/tts}")
+    private String standardTtsUrl;
+
+    @Value("${spark.standard-tts-host:ws-api.xfyun.cn}")
+    private String standardTtsHost;
+
+    @Value("${spark.enable-standard-fallback:true}")
+    private boolean enableStandardFallback;
+
+    @Value("${spark.standard-fallback-vcn:xiaoyan}")
+    private String standardFallbackVcn;
+
     @Resource
     private S3ClientUtil s3ClientUtil;
 
@@ -89,7 +103,24 @@ public class SmartTTSIntegration implements TtsIntegration {
         }
 
         // Perform Smart TTS synthesis
-        byte[] audioData = performSmartTTSSynthesis(text, vcn, speed, appId, apiKey, apiSecret);
+        byte[] audioData;
+        try {
+            audioData = performSmartTTSSynthesis(text, vcn, speed, appId, apiKey, apiSecret);
+        } catch (Exception e) {
+            if (!shouldFallbackToStandardTts(e)) {
+                throw e;
+            }
+
+            String fallbackVcn = resolveStandardFallbackVcn(vcn);
+            log.warn("Smart TTS unavailable, fallback to standard TTS. originalVcn={}, fallbackVcn={}, reason={}",
+                    vcn, fallbackVcn, e.getMessage());
+            try {
+                audioData = performStandardTTSSynthesis(text, fallbackVcn, speed, appId, apiKey, apiSecret);
+            } catch (Exception fallbackException) {
+                throw new RuntimeException("Smart TTS and standard TTS both failed. smart="
+                        + e.getMessage() + ", standard=" + fallbackException.getMessage(), fallbackException);
+            }
+        }
 
         // Upload audio file to Minio and get URL
         String objectKey = "audio/" + LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE) + "/" + UUID.randomUUID() + ".mp3";
@@ -144,6 +175,25 @@ public class SmartTTSIntegration implements TtsIntegration {
         }
     }
 
+    private byte[] performStandardTTSSynthesis(String text, String vcn, Integer speed, String appId, String apiKey, String apiSecret) throws Exception {
+        log.info("Performing standard TTS synthesis for text: {} with voice: {}, speed: {}",
+                text.substring(0, Math.min(text.length(), 50)) + (text.length() > 50 ? "..." : ""),
+                vcn, speed);
+
+        String wsUrl = getStandardAuthUrl(standardTtsUrl, standardTtsHost, apiKey, apiSecret);
+        CompletableFuture<byte[]> resultFuture = new CompletableFuture<>();
+        StandardTTSWebSocketListener listener = new StandardTTSWebSocketListener(resultFuture, text, vcn, speed, appId);
+        Request request = new Request.Builder().url(wsUrl).build();
+        WebSocket webSocket = httpClient.newWebSocket(request, listener);
+
+        try {
+            return resultFuture.get(30, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            webSocket.close(1000, "Timeout or error");
+            throw new RuntimeException("Standard TTS synthesis failed: " + e.getMessage(), e);
+        }
+    }
+
     /**
      * Generates authenticated URL for WebSocket connection
      */
@@ -169,6 +219,63 @@ public class SmartTTSIntegration implements TtsIntegration {
         return requestUrl + "?authorization=" + URLEncoder.encode(authorization, StandardCharsets.UTF_8.name()) +
                 "&date=" + URLEncoder.encode(date, StandardCharsets.UTF_8.name()) +
                 "&host=" + URLEncoder.encode(url.getHost(), StandardCharsets.UTF_8.name());
+    }
+
+    private String getStandardAuthUrl(String requestUrl, String host, String apiKey, String apiSecret) throws Exception {
+        URL url = new URL(requestUrl);
+        SimpleDateFormat format = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss z", Locale.US);
+        format.setTimeZone(TimeZone.getTimeZone("GMT"));
+        String date = format.format(new Date());
+
+        String signatureOrigin = "host: " + host + "\n" +
+                "date: " + date + "\n" +
+                "GET " + url.getPath() + " HTTP/1.1";
+
+        Mac mac = Mac.getInstance("hmacsha256");
+        SecretKeySpec spec = new SecretKeySpec(apiSecret.getBytes(StandardCharsets.UTF_8), "hmacsha256");
+        mac.init(spec);
+        byte[] signData = mac.doFinal(signatureOrigin.getBytes(StandardCharsets.UTF_8));
+        String signature = Base64.getEncoder().encodeToString(signData);
+
+        String authorizationOrigin = "api_key=\"" + apiKey + "\", algorithm=\"hmac-sha256\", headers=\"host date request-line\", signature=\"" + signature + "\"";
+        String authorization = Base64.getEncoder().encodeToString(authorizationOrigin.getBytes(StandardCharsets.UTF_8));
+
+        return requestUrl + "?authorization=" + URLEncoder.encode(authorization, StandardCharsets.UTF_8.name()) +
+                "&date=" + URLEncoder.encode(date, StandardCharsets.UTF_8.name()) +
+                "&host=" + URLEncoder.encode(host, StandardCharsets.UTF_8.name());
+    }
+
+    private boolean shouldFallbackToStandardTts(Exception e) {
+        if (!enableStandardFallback) {
+            return false;
+        }
+        String message = flattenExceptionMessage(e).toLowerCase(Locale.ROOT);
+        return message.contains("11200")
+                || message.contains("licccheck failed")
+                || message.contains("licc limit")
+                || message.contains("unauthenticated");
+    }
+
+    private String flattenExceptionMessage(Throwable throwable) {
+        List<String> messages = new ArrayList<>();
+        Throwable current = throwable;
+        while (current != null) {
+            if (current.getMessage() != null && !current.getMessage().isEmpty()) {
+                messages.add(current.getMessage());
+            }
+            current = current.getCause();
+        }
+        return String.join(" | ", messages);
+    }
+
+    private String resolveStandardFallbackVcn(String originalVcn) {
+        if (originalVcn == null || originalVcn.isEmpty()) {
+            return standardFallbackVcn;
+        }
+        if (originalVcn.startsWith("x6_") || originalVcn.endsWith("_pro") || originalVcn.endsWith("_flow")) {
+            return standardFallbackVcn;
+        }
+        return originalVcn;
     }
 
     /**
@@ -285,6 +392,88 @@ public class SmartTTSIntegration implements TtsIntegration {
             textPayload.put("text", Base64.getEncoder().encodeToString(this.text.getBytes(StandardCharsets.UTF_8)));
             payload.put("text", textPayload);
             request.put("payload", payload);
+
+            return request;
+        }
+    }
+
+    private static class StandardTTSWebSocketListener extends WebSocketListener {
+        private final CompletableFuture<byte[]> resultFuture;
+        private final String text;
+        private final String vcn;
+        private final Integer speed;
+        private final String appId;
+        private final ByteArrayOutputStream audioStream = new ByteArrayOutputStream();
+
+        private StandardTTSWebSocketListener(CompletableFuture<byte[]> resultFuture, String text, String vcn, Integer speed, String appId) {
+            this.resultFuture = resultFuture;
+            this.text = text;
+            this.vcn = vcn;
+            this.speed = speed;
+            this.appId = appId;
+        }
+
+        @Override
+        public void onOpen(WebSocket webSocket, Response response) {
+            webSocket.send(buildTTSRequest().toString());
+        }
+
+        @Override
+        public void onMessage(WebSocket webSocket, String text) {
+            try {
+                JSONObject responseJson = JSON.parseObject(text);
+                int code = responseJson.getIntValue("code");
+                if (code != 0) {
+                    String message = responseJson.getString("message");
+                    resultFuture.completeExceptionally(new RuntimeException("Standard TTS service error: " + code + " - " + message));
+                    webSocket.close(1000, "Error");
+                    return;
+                }
+
+                JSONObject data = responseJson.getJSONObject("data");
+                if (data != null) {
+                    String audioBase64 = data.getString("audio");
+                    if (audioBase64 != null && !audioBase64.isEmpty()) {
+                        audioStream.write(Base64.getDecoder().decode(audioBase64));
+                    }
+
+                    int status = data.getIntValue("status");
+                    if (status == 2) {
+                        resultFuture.complete(audioStream.toByteArray());
+                        webSocket.close(1000, "Completed");
+                    }
+                }
+            } catch (Exception e) {
+                resultFuture.completeExceptionally(e);
+                webSocket.close(1000, "Error");
+            }
+        }
+
+        @Override
+        public void onFailure(WebSocket webSocket, Throwable t, Response response) {
+            resultFuture.completeExceptionally(t);
+        }
+
+        private JSONObject buildTTSRequest() {
+            JSONObject request = new JSONObject();
+
+            JSONObject common = new JSONObject();
+            common.put("app_id", appId);
+            request.put("common", common);
+
+            JSONObject business = new JSONObject();
+            business.put("aue", "lame");
+            business.put("sfl", 1);
+            business.put("auf", "audio/L16;rate=16000");
+            business.put("vcn", vcn);
+            business.put("tte", "utf8");
+            business.put("speed", speed);
+            request.put("business", business);
+
+            JSONObject data = new JSONObject();
+            data.put("status", 2);
+            data.put("text", Base64.getEncoder().encodeToString(this.text.getBytes(StandardCharsets.UTF_8)));
+            request.put("data", data);
 
             return request;
         }

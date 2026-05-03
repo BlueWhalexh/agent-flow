@@ -50,7 +50,7 @@ public class ModelController {
     }
 
     @PostMapping("/republish")
-    @SpacePreAuth(key = "ModelController_republish_POST", module = "Model Management", point = "Republish Model", description = "Republish Model")
+    @SpacePreAuth(key = "ModelController_republishModel_POST", module = "Model Management", point = "Republish Model", description = "Republish Model")
     public ApiResult republishModel(@RequestParam(name = "modelId") Long modelId) {
         return modelService.republishModel(modelId);
     }
